@@ -85,10 +85,64 @@ def tensor_sum(t: Tensor) -> Tensor:
             """Each element contributes in 1 (linear) to the output"""
             return grad * np.ones_like(t.data)
 
-        # Creates the dependency, for when computing the backpropagation
+        # Dependency between output and input to compute the backprop
         depends_on = [Dependency(t, grad_fn)]
     else:
         depends_on = []
+
+    return Tensor(data,
+                  requires_grad,
+                  depends_on)
+
+def add(t1: Tensor, t2: Tensor) -> Tensor:
+    data = t1.data + t2.data
+    requires_grad = t1.requires_grad or t2.requires_grad
+    depends_on: List[Dependency] = []
+
+    if t1.requires_grad:
+        def grad_fn1(grad: np.ndarray) -> np.ndarray:
+            # d/dx (x+y) = y
+
+            # Sum out addded dims
+            ndims_added = grad.ndim - t1.data.ndim
+
+            # if ndims_added > 0 -> broadcasted by adding dimensions at the
+            # beginning of the tensor. Need to sum these gradients, simply
+            # because broadcast repeats data along some dimension/s.
+            for _ in range(ndims_added):
+                grad = grad.sum(axis=0)
+
+            # Sum across broadcasted, but non-added dims
+            # (1, 3) + (2, 3) -> (2, 3) and grad (2, 3), but we need (1, 3),
+            # since the gradient is wrt x, which is (1, 3)
+            for i, dim in enumerate(t1.shape):
+                if dim == 1:
+                    grad = grad.sum(axis=i, keepdims=True)
+
+            return grad
+        depends_on.append(Dependency(t1, grad_fn1))
+    
+    if t2.requires_grad:
+        def grad_fn2(grad: np.ndarray) -> np.ndarray:
+            # d/dy (x+y) = x
+
+            # Handling numpy broadcasting properly
+            ndims_added = grad.ndim - t2.data.ndim
+
+            # if ndims_added > 0 -> broadcasted by adding dimensions at the
+            # beginning of the tensor. Need to sum these gradients
+            for _ in range(ndims_added):
+                grad = grad.sum(axis=0)
+
+            # Sum across broadcasted, but non-added dims
+            # (2, 3) + (1, 3) -> (2, 3) and grad (2, 3), but we need (1, 3), bc
+            # now the grad is wrt y, which is (1, 3).
+            for i, dim in enumerate(t2.shape):
+                if dim == 1:
+                    grad = grad.sum(axis=i, keepdims=True)
+
+            return grad
+        depends_on.append(Dependency(t2, grad_fn2))
 
     return Tensor(data,
                   requires_grad,
