@@ -1,0 +1,29 @@
+import unittest
+from autograd.tensor import Tensor, add
+
+class TestTensorAdd(unittest.TestCase):
+
+    def test_broadcast_add(self):
+        # If t1.shape == t2.shape, then fine
+        # say that t1.shape = (10, 5), t2.shape == (5, )
+        #   t1 + t2, t2 gets viewed as (1, 5)
+        #   then t2 is copied along the rows
+
+        t1 = Tensor([[1, 2, 3], [4, 5, 6]], requires_grad=True) # shape = (2, 3)
+        t2 = Tensor([7, 8, 9], requires_grad=True) # shape = (3,)
+
+        t3 = add(t1, t2) # shape (2, 3)
+        t3.backward(Tensor([[1, 1, 1], [1, 1, 1]]))
+
+        assert t1.grad.data.tolist() == [[1, 1, 1], [1, 1, 1]]
+        assert t2.grad.data.tolist() == [2, 2, 2]
+    
+    def test_broadcast_add2(self):
+        t1 = Tensor([[1, 2, 3], [4, 5, 6]], requires_grad=True) # shape = (2, 3)
+        t2 = Tensor([[7, 8, 9]], requires_grad=True) # shape = (1, 3)
+
+        t3 = add(t1, t2) # shape (2, 3)
+        t3.backward(Tensor([[1, 1, 1], [1, 1, 1]]))
+
+        assert t1.grad.data.tolist() == [[1, 1, 1], [1, 1, 1]]
+        assert t2.grad.data.tolist() == [[2, 2, 2]]

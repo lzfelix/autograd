@@ -1,6 +1,3 @@
-import sys
-sys.path.append('..')
-
 import unittest
 from autograd.tensor import Tensor
 
