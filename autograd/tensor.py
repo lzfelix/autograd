@@ -16,6 +16,14 @@ def ensure_array(arrayable: Arrayable) -> np.ndarray:
     else:
         return np.array(arrayable)
 
+Tensorable = Union['Tensor', float, np.ndarray]
+
+def ensure_tensor(tensorable: Tensorable) -> 'Tensor':
+    if isinstance(tensorable, Tensor):
+        return tensorable
+    else:
+        return Tensor(tensorable)
+
 
 class Tensor:
     def __init__(self,
@@ -42,6 +50,50 @@ class Tensor:
     def __repr__(self) -> str:
         return f"Tensor({self.data}, requires_grad={self.requires_grad})"
 
+    def __add__(self, other) -> 'Tensor':
+        """Gets called when t + other"""
+        return _add(self, ensure_tensor(other))
+    
+    def __radd__(self, other) -> 'Tensor': 
+        """Gets called when other + t"""
+        return _add(ensure_tensor(other), self)
+    
+    def __iadd__(self, other) -> 'Tensor':
+        """Called when we do t += other (inplace) add"""
+        # c = f(a) -> dc/da = dc/df * df/da
+        self.data = self.data + ensure_tensor(other).data
+        
+        # Invalidate previous gradients, since now we have a new component that
+        # depends on "self", the derivative of this new component must be taken
+        # into account when computing the gradient of "self".
+        self.grad = None
+        return self
+    
+    def __mul__(self, other) -> "Tensor":
+        return _mul(self, ensure_tensor(other))
+
+    def __rmul__(self, other) -> "Tensor":
+        return _mul(ensure_tensor(other), self)
+
+    def __imul__(self, other) -> 'Tensor':
+        self.data = self.data * ensure_tensor(other).data
+        self.grad =  None
+        return self
+    
+    def __neg__(self) -> 'Tensor':
+        return _neg(self)
+
+    def __sub__(self, other) -> 'Tensor':
+        return _sub(self, ensure_tensor(other))
+
+    def __rsub__(self, other) -> 'Tensor':
+        return _sub(ensure_tensor(other), self)
+
+    def __isub__(self, other) -> 'Tensor':
+        self.data = self.data - ensure_tensor(other).data
+        self.grad = None
+        return self
+
     def backward(self, grad: 'Tensor' = None) -> None:
         """Computes the backward pass. If grad is not specified, it is assumed 1
         for 0-tensors."""
@@ -62,7 +114,7 @@ class Tensor:
         #                                \-[z_3]---- [Node_3]   
 
         # Sum all the backwards input to this node
-        self.grad.data += grad.data
+        self.grad.data = self.grad.data + grad.data # type: ignore
 
         for dependency in self.depends_on:
             # Then applies the derivative to the function that establishes the
@@ -94,7 +146,7 @@ def tensor_sum(t: Tensor) -> Tensor:
                   requires_grad,
                   depends_on)
 
-def add(t1: Tensor, t2: Tensor) -> Tensor:
+def _add(t1: Tensor, t2: Tensor) -> Tensor:
     data = t1.data + t2.data
     requires_grad = t1.requires_grad or t2.requires_grad
     depends_on: List[Dependency] = []
@@ -149,7 +201,7 @@ def add(t1: Tensor, t2: Tensor) -> Tensor:
                   requires_grad,
                   depends_on)
 
-def mul(t1: Tensor, t2: Tensor) -> Tensor:
+def _mul(t1: Tensor, t2: Tensor) -> Tensor:
     """
     y = a * b
     have dL/dy
@@ -213,7 +265,7 @@ def mul(t1: Tensor, t2: Tensor) -> Tensor:
                   requires_grad,
                   depends_on)
 
-def neg(t: Tensor) -> Tensor:
+def _neg(t: Tensor) -> Tensor:
     data = -t.data
     requires_grad = t.requires_grad
     if requires_grad:
@@ -223,9 +275,9 @@ def neg(t: Tensor) -> Tensor:
 
     return Tensor(data, requires_grad, depends_on)
 
-def sub(t1: Tensor, t2: Tensor) -> Tensor:
+def _sub(t1: Tensor, t2: Tensor) -> Tensor:
     """Computationally it's a little bit unneficient, since two nodes are added
     to the computational graph: one for neg and another for add, instead of a
     single 'pure' subtraction node that performs all the operations within
     itself."""
-    return add(t1, neg(t2))
+    return _add(t1, _neg(t2))
