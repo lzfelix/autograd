@@ -148,3 +148,84 @@ def add(t1: Tensor, t2: Tensor) -> Tensor:
     return Tensor(data,
                   requires_grad,
                   depends_on)
+
+def mul(t1: Tensor, t2: Tensor) -> Tensor:
+    """
+    y = a * b
+    have dL/dy
+
+    DL/da = dL/dy * dy/da = dL/dy * b
+    """
+    data = t1.data * t2.data
+    requires_grad = t1.requires_grad or t2.requires_grad
+
+    depends_on = []
+
+    if t1.requires_grad:
+        def grad_fn1(grad: np.ndarray) -> np.ndarray:
+            # d/dx (x+y) = y
+            # This means we just pass back the gradient scaled by due chain rule
+            grad = grad * t2.data
+
+            # Sum out addded dims
+            ndims_added = grad.ndim - t1.data.ndim
+
+            # if ndims_added > 0 -> broadcasted by adding dimensions at the
+            # beginning of the tensor. Need to sum these gradients, simply
+            # because broadcast repeats data along some dimension/s.
+            for _ in range(ndims_added):
+                grad = grad.sum(axis=0)
+
+            # Sum across broadcasted, but non-added dims
+            # (1, 3) + (2, 3) -> (2, 3) and grad (2, 3), but we need (1, 3),
+            # since the gradient is wrt x, which is (1, 3)
+            for i, dim in enumerate(t1.shape):
+                if dim == 1:
+                    grad = grad.sum(axis=i, keepdims=True)
+
+            return grad
+        depends_on.append(Dependency(t1, grad_fn1))
+    
+    if t2.requires_grad:
+        def grad_fn2(grad: np.ndarray) -> np.ndarray:
+            # d/dy (x*y) = y
+            grad = grad * t1.data
+
+            # Handling numpy broadcasting properly
+            ndims_added = grad.ndim - t2.data.ndim
+
+            # if ndims_added > 0 -> broadcasted by adding dimensions at the
+            # beginning of the tensor. Need to sum these gradients
+            for _ in range(ndims_added):
+                grad = grad.sum(axis=0)
+
+            # Sum across broadcasted, but non-added dims
+            # (2, 3) + (1, 3) -> (2, 3) and grad (2, 3), but we need (1, 3), bc
+            # now the grad is wrt y, which is (1, 3).
+            for i, dim in enumerate(t2.shape):
+                if dim == 1:
+                    grad = grad.sum(axis=i, keepdims=True)
+
+            return grad
+        depends_on.append(Dependency(t2, grad_fn2))
+
+    return Tensor(data,
+                  requires_grad,
+                  depends_on)
+
+def neg(t: Tensor) -> Tensor:
+    data = -t.data
+    requires_grad = t.requires_grad
+    if requires_grad:
+        depends_on = [Dependency(t, lambda x: -x)]
+    else:
+        depends_on = []
+
+    return Tensor(data, requires_grad, depends_on)
+
+def sub(t1: Tensor, t2: Tensor) -> Tensor:
+    """Computationally it's a little bit unneficient, since two nodes are added
+    to the computational graph: one for neg and another for add, instead of a
+    single 'pure' subtraction node that performs all the operations within
+    itself."""
+    return add(t1, neg(t2))
