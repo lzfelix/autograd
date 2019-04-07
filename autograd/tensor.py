@@ -101,7 +101,8 @@ def add(t1: Tensor, t2: Tensor) -> Tensor:
 
     if t1.requires_grad:
         def grad_fn1(grad: np.ndarray) -> np.ndarray:
-            # d/dx (x+y) = y
+            # d/dx (x+y) = 1
+            # This means we just pass the gradient back bc the chain rule
 
             # Sum out addded dims
             ndims_added = grad.ndim - t1.data.ndim
@@ -124,7 +125,7 @@ def add(t1: Tensor, t2: Tensor) -> Tensor:
     
     if t2.requires_grad:
         def grad_fn2(grad: np.ndarray) -> np.ndarray:
-            # d/dy (x+y) = x
+            # d/dy (x+y) = 1
 
             # Handling numpy broadcasting properly
             ndims_added = grad.ndim - t2.data.ndim
