@@ -107,6 +107,9 @@ class Tensor:
         self.data = self.data - ensure_tensor(other).data
         return self
 
+    def __getitem__(self, idx) -> 'Tensor':
+        return _slice(self, idx)
+
     def backward(self, grad: 'Tensor' = None) -> None:
         """Computes the backward pass. If grad is not specified, it is assumed 1
         for 0-tensors."""
@@ -324,3 +327,18 @@ def _matmult(t1: Tensor, t2: Tensor) -> Tensor:
     return Tensor(data,
                   requires_grad,
                   depends_on)
+
+def _slice(t: Tensor, idxs) -> Tensor:
+    data = t.data[idxs]
+    requires_grad = t.requires_grad
+
+    if requires_grad:
+        def grad(grad: np.ndarray) -> np.ndarray:
+            bigger_grad = np.zeros_like(data)
+            bigger_grad[idxs] = grad
+
+        depends_on = [Dependency(t, grad)]
+    else:
+        depends_on = []
+    
+    return Tensor(data, requires_grad, depends_on)
