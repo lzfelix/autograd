@@ -86,6 +86,9 @@ class Tensor:
 
     def __rmul__(self, other) -> "Tensor":
         return _mul(ensure_tensor(other), self)
+    
+    def __matmul__(self, other) -> "Tensor":
+        return _matmult(self, ensure_tensor(other))
 
     def __imul__(self, other) -> 'Tensor':
         self.data = self.data * ensure_tensor(other).data
@@ -291,3 +294,33 @@ def _sub(t1: Tensor, t2: Tensor) -> Tensor:
     single 'pure' subtraction node that performs all the operations within
     itself."""
     return _add(t1, _neg(t2))
+
+def _matmult(t1: Tensor, t2: Tensor) -> Tensor:
+    """
+    if t3 = t1 @ t2, and grad3 is the gradient of some function wrt t3, then:
+        grad1 = grad3 @ t2.T
+        grad2 = t1.T @ grad3
+    if t1 is (m1, m2) and t2 in (m2, m3), then t3 is (m1, m3), consequently
+    grad3 is (m1, m3)
+    """
+    data = t1.data @ t2.data
+    requires_grad = t1.requires_grad or t2.requires_grad
+
+    depends_on: List[Dependency] = []
+
+    if t1.requires_grad:
+        def grad_fn1(grad: np.ndarray) -> np.ndarray:
+            # There's no broadcasting happening now! :D
+            return grad @ t2.data.T
+
+        depends_on.append(Dependency(t1, grad_fn1))
+
+    if t2.requires_grad:
+        def grad_fn2(grad: np.ndarray) -> np.ndarray:
+            return t1.data.T @ grad
+
+        depends_on.append(Dependency(t2, grad_fn2))
+
+    return Tensor(data,
+                  requires_grad,
+                  depends_on)
