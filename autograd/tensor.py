@@ -31,7 +31,7 @@ class Tensor:
                  requires_grad: bool = False,
                  depends_on: List[Dependency] = None) -> None:
         # Transforms data into a numpy array
-        self.data = ensure_array(data)
+        self._data = ensure_array(data)
 
         # Dependencies for backpropagation
         self.depends_on = depends_on or []
@@ -43,6 +43,16 @@ class Tensor:
         # If requires grad. Initially set it to all zeros
         if self.requires_grad:
             self.zero_grad()
+    
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+    
+    @data.setter
+    def data(self, new_data: np.ndarray) -> None:
+        self._data = new_data
+        # Setting the data manually means that grad must be invalidated
+        self.grad = None
     
     def zero_grad(self) -> None:
         self.grad = Tensor(np.zeros_like(self.data))
@@ -66,7 +76,9 @@ class Tensor:
         # Invalidate previous gradients, since now we have a new component that
         # depends on "self", the derivative of this new component must be taken
         # into account when computing the gradient of "self".
-        self.grad = None
+        # self.grad = None
+
+        # Now done with properties
         return self
     
     def __mul__(self, other) -> "Tensor":
@@ -74,10 +86,12 @@ class Tensor:
 
     def __rmul__(self, other) -> "Tensor":
         return _mul(ensure_tensor(other), self)
+    
+    def __matmul__(self, other) -> "Tensor":
+        return _matmult(self, ensure_tensor(other))
 
     def __imul__(self, other) -> 'Tensor':
         self.data = self.data * ensure_tensor(other).data
-        self.grad =  None
         return self
     
     def __neg__(self) -> 'Tensor':
@@ -91,8 +105,10 @@ class Tensor:
 
     def __isub__(self, other) -> 'Tensor':
         self.data = self.data - ensure_tensor(other).data
-        self.grad = None
         return self
+
+    def __getitem__(self, idx) -> 'Tensor':
+        return _slice(self, idx)
 
     def backward(self, grad: 'Tensor' = None) -> None:
         """Computes the backward pass. If grad is not specified, it is assumed 1
@@ -281,3 +297,48 @@ def _sub(t1: Tensor, t2: Tensor) -> Tensor:
     single 'pure' subtraction node that performs all the operations within
     itself."""
     return _add(t1, _neg(t2))
+
+def _matmult(t1: Tensor, t2: Tensor) -> Tensor:
+    """
+    if t3 = t1 @ t2, and grad3 is the gradient of some function wrt t3, then:
+        grad1 = grad3 @ t2.T
+        grad2 = t1.T @ grad3
+    if t1 is (m1, m2) and t2 in (m2, m3), then t3 is (m1, m3), consequently
+    grad3 is (m1, m3)
+    """
+    data = t1.data @ t2.data
+    requires_grad = t1.requires_grad or t2.requires_grad
+
+    depends_on: List[Dependency] = []
+
+    if t1.requires_grad:
+        def grad_fn1(grad: np.ndarray) -> np.ndarray:
+            # There's no broadcasting happening now! :D
+            return grad @ t2.data.T
+
+        depends_on.append(Dependency(t1, grad_fn1))
+
+    if t2.requires_grad:
+        def grad_fn2(grad: np.ndarray) -> np.ndarray:
+            return t1.data.T @ grad
+
+        depends_on.append(Dependency(t2, grad_fn2))
+
+    return Tensor(data,
+                  requires_grad,
+                  depends_on)
+
+def _slice(t: Tensor, idxs) -> Tensor:
+    data = t.data[idxs]
+    requires_grad = t.requires_grad
+
+    if requires_grad:
+        def grad(grad: np.ndarray) -> np.ndarray:
+            bigger_grad = np.zeros_like(data)
+            bigger_grad[idxs] = grad
+
+        depends_on = [Dependency(t, grad)]
+    else:
+        depends_on = []
+    
+    return Tensor(data, requires_grad, depends_on)
