@@ -1,5 +1,5 @@
 import numpy as np
-from autograd.tensor import Tensor
+from autograd import Tensor, Parameter
 
 if __name__ == '__main__':
     x_data = Tensor(np.random.randn(100, 3))
@@ -12,8 +12,8 @@ if __name__ == '__main__':
     # With a perfect linear regression, we can get 0 error
     y_data = x_data @ coef + 5
 
-    b = Tensor(np.random.randn(1), requires_grad=True)
-    w = Tensor(np.random.randn(3), requires_grad=True)
+    w = Parameter(3) # Tensor(shape=(3,), requires_grad=True, normal_random)
+    b = Parameter()  # Tensor(shape=(1,), requires_grad=True, normal_random)
 
     learning_rate = 1e-3
     batch_size = 32
