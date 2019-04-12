@@ -1,5 +1,6 @@
 import numpy as np
 from autograd import Tensor, Parameter, Module
+from autograd.optim import SGD
 
 class LinearModel(Module):
 
@@ -23,7 +24,7 @@ if __name__ == '__main__':
     # With a perfect linear regression, we can get 0 error
     y_data = x_data @ coef + 5
 
-    learning_rate = 1e-3
+    optimizer = SGD(lr=1e-3)
     batch_size = 32
     model = LinearModel()
 
@@ -44,7 +45,6 @@ if __name__ == '__main__':
             loss.backward()
             epoch_loss += loss.data
 
-            model.w -= learning_rate * model.w.grad
-            model.b -= learning_rate * model.b.grad
+            optimizer.step(model)
 
         print(f'{epoch} - {epoch_loss}')

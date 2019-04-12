@@ -1,8 +1,8 @@
 import inspect
 from typing import Iterator
 
-from autograd import Tensor, Parameter
-from autograd import Parameter
+from autograd.tensor import Tensor
+from autograd.parameter import Parameter
 
 class Module:
     """A colection of parameters that have a forward method (see pyTorch)"""
