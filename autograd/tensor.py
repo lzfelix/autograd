@@ -31,7 +31,7 @@ class Tensor:
                  requires_grad: bool = False,
                  depends_on: List[Dependency] = None) -> None:
         # Transforms data into a numpy array
-        self.data = ensure_array(data)
+        self._data = ensure_array(data)
 
         # Dependencies for backpropagation
         self.depends_on = depends_on or []
@@ -43,6 +43,16 @@ class Tensor:
         # If requires grad. Initially set it to all zeros
         if self.requires_grad:
             self.zero_grad()
+    
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+    
+    @data.setter
+    def data(self, new_data: np.ndarray) -> None:
+        self._data = new_data
+        # Setting the data manually means that grad must be invalidated
+        self.grad = None
     
     def zero_grad(self) -> None:
         self.grad = Tensor(np.zeros_like(self.data))
@@ -66,7 +76,9 @@ class Tensor:
         # Invalidate previous gradients, since now we have a new component that
         # depends on "self", the derivative of this new component must be taken
         # into account when computing the gradient of "self".
-        self.grad = None
+        # self.grad = None
+
+        # Now done with properties
         return self
     
     def __mul__(self, other) -> "Tensor":
@@ -77,7 +89,6 @@ class Tensor:
 
     def __imul__(self, other) -> 'Tensor':
         self.data = self.data * ensure_tensor(other).data
-        self.grad =  None
         return self
     
     def __neg__(self) -> 'Tensor':
@@ -91,7 +102,6 @@ class Tensor:
 
     def __isub__(self, other) -> 'Tensor':
         self.data = self.data - ensure_tensor(other).data
-        self.grad = None
         return self
 
     def backward(self, grad: 'Tensor' = None) -> None:
